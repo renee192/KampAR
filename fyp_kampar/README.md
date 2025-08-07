@@ -1,3 +1,3 @@
-# fyp_kampar
+# KampAR
 
-A new Flutter project.
+A mobile tour guide application for Kampar.

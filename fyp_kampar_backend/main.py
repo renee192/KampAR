@@ -22,9 +22,6 @@ print("Loading CLIP model...")
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
-# Reference image folder
-referenceImg = "Images"
-
 # Reference image paths
 reference_paths = {
     "inkblocks": [
@@ -36,12 +33,13 @@ reference_paths = {
         "Images/Dewan/inkblocks_far2.jpg",
         "Images/Dewan/inkblocks_near.jpg",
         "Images/Dewan/inkblocks_side.jpg",
+        "Images/Dewan/inkblocks_side_far.jpg"
         "Images/Dewan/inkblocks_side_near.jpg",
         "Images/Dewan/inkblocks_side_water.jpg"
     ],
     "moongate": [
         "Images/Dewan/moongate_blocked_far.jpg",
-        "Images/Dewan/moongate_test.jpg",
+        "Images/Dewan/moongate_far_withib.jpg",
         "Images/Dewan/moongate_part1.jpg",
         "Images/Dewan/moongate_side.jpg",
         "Images/Dewan/moongate_side1.jpg",
@@ -109,7 +107,7 @@ async def predict(file: UploadFile = File(...)):
     similarities = {}
     for label in reference_embeddings:
         image_sims = F.cosine_similarity(test_embedding, reference_embeddings[label])
-        image_sim = image_sims.max().item()  # Best match instead of average
+        image_sim = image_sims.max().item() 
         text_sim = F.cosine_similarity(test_embedding, text_embeddings[label]).item()
         combined_score = 0.6 * image_sim + 0.4 * text_sim
         similarities[label] = combined_score

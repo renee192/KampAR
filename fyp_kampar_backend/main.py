@@ -8,10 +8,10 @@ import io
 
 app = FastAPI()
 
-# Allow requests from your Flutter app
+# Allow requests from Flutter app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to your app's domain in production
+    allow_origins=["*"],  # Change to app's domain 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,7 +33,7 @@ reference_paths = {
         "Images/Dewan/inkblocks_far2.jpg",
         "Images/Dewan/inkblocks_near.jpg",
         "Images/Dewan/inkblocks_side.jpg",
-        "Images/Dewan/inkblocks_side_far.jpg"
+        "Images/Dewan/inkblocks_side_far.jpg",
         "Images/Dewan/inkblocks_side_near.jpg",
         "Images/Dewan/inkblocks_side_water.jpg"
     ],
@@ -112,8 +112,18 @@ async def predict(file: UploadFile = File(...)):
         combined_score = 0.6 * image_sim + 0.4 * text_sim
         similarities[label] = combined_score
 
+    MATCH_THRESHOLD = 0.5
+
     # Get best match
-    predicted_label = max(similarities, key=similarities.get)
+    best_label = max(similarities, key=similarities.get)
+    best_score = similarities[best_label]
+    
+
+    if best_score >= MATCH_THRESHOLD:
+        predicted_label = best_label
+    else:
+        predicted_label = "unknown"
+
 
     # print prdicted result
     print(f"Predicted: {predicted_label}, Similarities: {similarities}")

@@ -117,7 +117,6 @@ async def predict(file: UploadFile = File(...)):
     # Get best match
     best_label = max(similarities, key=similarities.get)
     best_score = similarities[best_label]
-    
 
     if best_score >= MATCH_THRESHOLD:
         predicted_label = best_label
@@ -126,7 +125,7 @@ async def predict(file: UploadFile = File(...)):
 
 
     # print prdicted result
-    print(f"Predicted: {predicted_label}, Similarities: {similarities}")
+    print(f"Predicted: {predicted_label}\n Similarities: {similarities}\n")
 
     return {
         "predicted": predicted_label,

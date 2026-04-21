@@ -139,7 +139,7 @@ class _CameraRecognitionState extends State<CameraRecognition>
   ) async {
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://10.216.232.76:8000/predict'),
+      Uri.parse('https://kampar-backend-830798580425.asia-southeast1.run.app/predict'),
     );
 
     request.headers['User-Agent'] = 'KampAR-Client/1.0';

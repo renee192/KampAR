@@ -8,9 +8,21 @@ import io
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from ultralytics import YOLO  #, FastSAM
+import os
+import json
 
-# Firebase Setup
-cred = credentials.Certificate("firebase-key.json") 
+# Check if is in the cloud, look for secret variable
+firebase_secret = os.environ.get("FIREBASE_KEY_JSON")
+
+if firebase_secret:
+    print("Cloud Mode: Using Firebase credentials from Environment Variable.")
+    cred_dict = json.loads(firebase_secret)
+    cred = credentials.Certificate(cred_dict)
+else:
+    print("Local Mode: Using local firebase-key.json file.")
+    cred = credentials.Certificate("firebase-key.json")
+
+# Initialize Firebase
 firebase_admin.initialize_app(cred, {
     'storageBucket': 'kampar-tour-guide-app.firebasestorage.app'
 })

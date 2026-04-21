@@ -1,133 +1,243 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import torch
 import torch.nn.functional as F
 import io
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+from ultralytics import YOLO  #, FastSAM
+
+# Firebase Setup
+cred = credentials.Certificate("firebase-key.json") 
+firebase_admin.initialize_app(cred, {
+    'storageBucket': 'kampar-tour-guide-app.firebasestorage.app'
+})
+
+db = firestore.client()
+bucket = storage.bucket()
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print("Using device:", device)
 
 app = FastAPI()
 
 # Allow requests from Flutter app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to app's domain 
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load Model & References at Startup
+# Load Models
+print("Loading FastSAM model...")
+fastsam_model = YOLO("FastSAM-s.pt").to(device)
+
 print("Loading CLIP model...")
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32") # use_fast=False
 
-# Reference image paths
-reference_paths = {
-    "inkblocks": [
-        "Images/Dewan/inkblocks_close.jpg",
-        "Images/Dewan/inkblocks_detail.jpg",
-        "Images/Dewan/inkblocks_detail_water.jpg",
-        "Images/Dewan/inkblocks_far.jpg",
-        "Images/Dewan/inkblocks_far1.jpg",
-        "Images/Dewan/inkblocks_far2.jpg",
-        "Images/Dewan/inkblocks_near.jpg",
-        "Images/Dewan/inkblocks_side.jpg",
-        "Images/Dewan/inkblocks_side_far.jpg",
-        "Images/Dewan/inkblocks_side_near.jpg",
-        "Images/Dewan/inkblocks_side_water.jpg"
-    ],
-    "moongate": [
-        "Images/Dewan/moongate_blocked_far.jpg",
-        "Images/Dewan/moongate_far_withib.jpg",
-        "Images/Dewan/moongate_part1.jpg",
-        "Images/Dewan/moongate_side.jpg",
-        "Images/Dewan/moongate_side1.jpg",
-        "Images/Dewan/moongate_whole.jpg",
-        "Images/Dewan/moongate_whole1.jpg",
-        "Images/Dewan/moongate_whole_far.jpg"
-    ],
-    "pavilion": [
-        "Images/Dewan/pavilion.jpg",
-        "Images/Dewan/pavilion_far.jpg",
-        "Images/Dewan/pavilion_near.jpg",
-        "Images/Dewan/pavilion_part.jpg",
-        "Images/Dewan/pavilion_whole.jpg"
-    ]
-}
+attraction_metadata = {}
 
-# Load reference images
-reference_images = {
-    label: [Image.open(p).convert("RGB") for p in paths]
-    for label, paths in reference_paths.items()
-}
+# Fetch from Firebase
+def load_reference_images(base_prefix="reference_images/"):
+    print("Crawling Firebase Storage for reference images...")
+    
+    dynamic_refs = {}
+    
+    blobs = bucket.list_blobs(prefix=base_prefix)
 
-# Text prompts
-text_prompts = {
-    "inkblocks": "square-shaped grey and black architectural feature",
-    "moongate": "round shape like full moon, with red bricks and white paint bounded window",
-    "pavilion": "round dome ceiling with square floors and red pillars, not only pillars"
-}
+    for blob in blobs:
+        if not blob.name.lower().endswith((".jpg", ".jpeg", ".png")):
+            continue
 
-# Encode reference images
+        # Split the path: reference_images / place / label / filename
+        parts = blob.name.split('/')
+        
+        if len(parts) >= 4:
+            place = parts[1]  
+            label = parts[2] 
+            
+            if place not in dynamic_refs:
+                dynamic_refs[place] = {}
+            if label not in dynamic_refs[place]:
+                dynamic_refs[place][label] = []
+            
+            # Download and process the image
+            try:
+                img_data = blob.download_as_bytes()
+                img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                img.load()
+                dynamic_refs[place][label].append(img)
+                print(f"Loaded: {place} -> {label} ({blob.name})")
+            except Exception as e:
+                print(f"Failed to load {blob.name}: {e}")
+
+    return dynamic_refs
+
+def load_text_prompts():
+    print("Crawling Firestore for text prompts...")
+    dynamic_text = {}
+    global attraction_metadata 
+
+    places_docs = db.collection("places").stream()
+
+    for place_doc in places_docs:
+        place_id = place_doc.id 
+        dynamic_text[place_id] = {}
+        attraction_metadata[place_id] = {}
+
+        attractions = db.collection("places").document(place_id).collection("attractions").stream()
+        
+        for attr_doc in attractions:
+            data = attr_doc.to_dict()
+            doc_id = attr_doc.id 
+            
+            if "text_prompt" in data:
+                dynamic_text[place_id][doc_id] = data["text_prompt"]
+                print(f"Loaded Text: {place_id} -> {doc_id}")
+            
+            attraction_metadata[place_id][doc_id] = {
+                "display_label": data.get("label", doc_id), 
+                "url": data.get("url", "")
+            }
+
+    return dynamic_text
+
+# Get reference images and texts
+reference_paths = load_reference_images()
+text_prompts = load_text_prompts()
+
+# Compute Embeddings
 reference_embeddings = {}
-for label, images in reference_images.items():
-    inputs = processor(images=images, return_tensors="pt", padding=True)
-    with torch.no_grad():
-        outputs = model.get_image_features(**inputs)
-        outputs = outputs / outputs.norm(dim=-1, keepdim=True)
-        reference_embeddings[label] = outputs
-
-# Encode text prompts
 text_embeddings = {}
-for label, text in text_prompts.items():
-    inputs = processor(text=[text], return_tensors="pt", padding=True)
-    with torch.no_grad():
-        outputs = model.get_text_features(**inputs)
-        outputs = outputs / outputs.norm(dim=-1, keepdim=True)
-        text_embeddings[label] = outputs
+
+# Process Images
+for place, labels in reference_paths.items():
+    reference_embeddings[place] = {}
+    for label, images in labels.items():
+        if not images: continue
+        inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
+        with torch.no_grad():
+            features = clip_model.get_image_features(**inputs)
+
+            if not isinstance(features, torch.Tensor):
+                features = features.pooler_output
+
+            # normalize embeddings
+            features = F.normalize(features, dim=-1)
+        reference_embeddings[place][label] = features
+
+# Process Text
+for place, labels in text_prompts.items():
+    text_embeddings[place] = {}
+    for label, text in labels.items():
+        inputs = processor(text=[text], return_tensors="pt").to(device)
+        with torch.no_grad():            
+            features = clip_model.get_text_features(**inputs)
+
+            if not isinstance(features, torch.Tensor):
+                features = features.pooler_output
+
+            features = F.normalize(features, dim=-1)
+        text_embeddings[place][label] = features
 
 print("Model and references loaded.")
 
-# API Endpoint for Prediction
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    print(f"Received file: {file.filename}")
-    # Read uploaded image
-    image_bytes = await file.read()
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+# CLIP
+def clip_prediction(cropped_img, place_id):
+    inputs = processor(images=cropped_img, return_tensors="pt").to(device)
 
-    # Encode test image
-    test_inputs = processor(images=img, return_tensors="pt")
     with torch.no_grad():
-        test_embedding = model.get_image_features(**test_inputs)
-        test_embedding = test_embedding / test_embedding.norm(dim=-1, keepdim=True)
+        vision_outputs = clip_model.vision_model(**inputs)
+        image_feature = clip_model.visual_projection(vision_outputs.pooler_output)
+        image_feature = F.normalize(image_feature, dim=-1)
 
-    # Compare with reference images & text prompts
     similarities = {}
-    for label in reference_embeddings:
-        image_sims = F.cosine_similarity(test_embedding, reference_embeddings[label])
-        image_sim = image_sims.max().item() 
-        text_sim = F.cosine_similarity(test_embedding, text_embeddings[label]).item()
+    for label in reference_embeddings[place_id]:
+        ref_embeds = reference_embeddings[place_id][label]
+        txt_embed = text_embeddings[place_id][label]
+
+        # Compare with reference images
+        image_sims = F.cosine_similarity(image_feature, ref_embeds)
+        image_sim = image_sims.max().item()
+
+        # Compare with text prompt
+        text_sim = F.cosine_similarity(image_feature, txt_embed).item()
+
+        # Weighted score 
         combined_score = 0.6 * image_sim + 0.4 * text_sim
         similarities[label] = combined_score
 
-    MATCH_THRESHOLD = 0.5
-
-    # Get best match
     best_label = max(similarities, key=similarities.get)
-    best_score = similarities[best_label]
+    return best_label, similarities[best_label]
 
-    if best_score >= MATCH_THRESHOLD:
-        predicted_label = best_label
+# API Endpoint for Prediction
+@app.post("/predict")
+async def predict(
+    place: str = Form(...),
+    file: UploadFile = File(...)
+):
+    print(f"Request from place: {place}")
+
+    if place not in reference_embeddings:
+        return {"error": "Place not found"}
+
+    image_bytes = await file.read()
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    width, height = img.size
+
+    # Run detection
+    fastsam_results = fastsam_model(img, conf=0.6, iou=0.45) 
+    print(f"DEBUG: Found {len(fastsam_results[0].boxes)} objects.")
+    
+    best_detections = {}
+
+    if place == "utar_grand_hall":
+        MATCH_THRESHOLD = 0.55
+
+    elif place == "kampar_seng_fatt_temple":
+        MATCH_THRESHOLD = 0.6
+
     else:
-        predicted_label = "unknown"
+        MATCH_THRESHOLD = 0.6
 
+    # Process each detected bounding box
+    for result in fastsam_results[0].boxes:
+        box = result.xyxy[0].tolist()
+        cropped_obj = img.crop((box[0], box[1], box[2], box[3]))
+        
+        # Identify object
+        detected_id, score = clip_prediction(cropped_obj, place)
 
-    # print prdicted result
-    print(f"Predicted: {predicted_label}\n Similarities: {similarities}\n")
+        if score >= MATCH_THRESHOLD:
+            if detected_id not in best_detections or score > best_detections[detected_id]["score"]:
+                
+                meta = attraction_metadata.get(place, {}).get(detected_id, {})
+                display_label = meta.get("display_label", detected_id)
+                url = meta.get("url", "")
+
+                best_detections[detected_id] = {
+                    "id": detected_id,           
+                    "label": display_label,      
+                    "url": url,                 
+                    "score": round(score, 4),
+                    "box": [
+                        box[0] / width,  
+                        box[1] / height, 
+                        box[2] / width, 
+                        box[3] / height  
+                    ]
+                }
+    
+    # Convert the dictionary values back to a list
+    final_list = list(best_detections.values())
+    print(f"FINAL DETECTIONS TO SEND: {final_list}")
 
     return {
-        "predicted": predicted_label,
-        "similarities": similarities
+        "place": place,
+        "detections": final_list
     }

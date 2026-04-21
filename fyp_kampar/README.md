@@ -1,3 +1,0 @@
-# KampAR
-
-Frontend 

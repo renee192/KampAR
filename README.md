@@ -17,6 +17,23 @@ Instead of using GPS, KampAR visually recognises specific "Attraction Spots" (di
 * **Intelligent Visual Pipeline:** Combines zero-shot object detection with powerful image classification to recognise spots without needing massive, heavily annotated local datasets.
 * **Interactive Tour Guide:** Offers a seamless, self-guided tourist experience.
 
+## 🔎 Supported Attraction Spots
+| Location | Recognized Spot / Artifact |
+| :--- | :--- |
+| **🏛️ UTAR Grand Hall** | Moongate |
+| | Ink Blocks |
+| | Pavilion |
+| **🛕 Seng Fatt Temple**| Bai Wu Chang (白无常) |
+| | Chu Xun Pai Bian (出巡牌匾) |
+| | Feng Xiang Zun Zhe (奉香尊者) |
+| | Fu Lu Cai Shen Tu (福禄财神图) |
+| | Guan Di Sheng Jun (关帝圣君) |
+| | Guan Yin Pu Sa (观音菩萨) |
+| | Mi Le Zun Zhe (弥勒尊者) |
+| | Mu Lian Zun Zhe (目莲尊者) |
+| | Qi Xian Xia Fan (七仙下凡) |
+| | Shi Cai Zun Zhe (施财尊者) |
+
 ## 🧠 Recognition Pipeline
 KampAR relies on a two-step pre-trained model pipeline to achieve high-accuracy, real-time recognition:
 
@@ -32,5 +49,5 @@ KampAR relies on a two-step pre-trained model pipeline to achieve high-accuracy,
   * [FastSAM](https://docs.ultralytics.com/models/fast-sam) (Fast Segment Anything)
   * [OpenAI CLIP (vit-base-patch32)](https://huggingface.co/openai/clip-vit-base-patch32) (Contrastive Language-Image Pretraining)
 * **Backend / Cloud:** Python, FastAPI, Firebase, Google Cloud
-
+---
 🎥 **[Watch the demo here](https://drive.google.com/file/d/18Us5Hxz_G2mY96w0HGWW--QeMDsiBD4r/view?usp=drive_link)**

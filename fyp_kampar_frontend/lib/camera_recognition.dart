@@ -21,11 +21,18 @@ class CameraRecognition extends StatefulWidget {
 class _CameraRecognitionState extends State<CameraRecognition>
     with WidgetsBindingObserver {
   Timer? _timer;
+  Timer? _clearDisplayTimer;
+  Timer? _coldStartTimer;
+
   bool _hasPermissions = false;
   List<dynamic> _prediction = [];
   ARSessionManager? _arSessionManager;
   bool _isProcessingFrame = false;
   bool _isARVisible = true;
+
+  bool _isWaitingForBackend = false;
+  String _loadingText = "Analysing environment...";
+  bool _hasReceivedFirstResponse = false;
 
   @override
   void initState() {
@@ -48,7 +55,7 @@ class _CameraRecognitionState extends State<CameraRecognition>
       setState(() {
         _isARVisible = true;
       });
-      log("App resumed. Rebuilding fresh AR surface.");
+      log("App resumed. Rebuilding new AR surface.");
     }
   }
 
@@ -69,13 +76,13 @@ class _CameraRecognitionState extends State<CameraRecognition>
     _timer?.cancel();
 
     _timer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      // Skip this tick if still waiting for the backend or AR isn't ready
+      // Skip this tick if still waiting for the backend or AR view not ready
       if (!mounted || _arSessionManager == null || _isProcessingFrame) return;
 
       try {
         _isProcessingFrame = true;
 
-        // Grab the current frame from the AR environment
+        // Grab current frame
         final imageProvider = await _arSessionManager!.snapshot();
 
         await _processAndSendSnapshot(imageProvider);
@@ -89,19 +96,58 @@ class _CameraRecognitionState extends State<CameraRecognition>
 
   Future<void> _processAndSendSnapshot(ImageProvider imageProvider) async {
     try {
-      // 1. Convert the AR ImageProvider into raw bytes
       final Uint8List? imageBytes = await _imageProviderToBytes(imageProvider);
-
       if (imageBytes == null) return;
 
-      // 2. Send the bytes directly to your backend
+      if (!_hasReceivedFirstResponse) {
+        if (mounted) {
+          setState(() {
+            _isWaitingForBackend = true;
+            _loadingText = "Analyzing environment...";
+          });
+        }
+
+        _coldStartTimer?.cancel();
+        _coldStartTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted && !_hasReceivedFirstResponse) {
+            setState(() {
+              _loadingText =
+                  "Waking up the server... this takes a few seconds!";
+            });
+          }
+        });
+      }
+
       final results = await _sendBytesToBackend(imageBytes, widget.placeId);
 
+      if (!_hasReceivedFirstResponse) {
+        _coldStartTimer?.cancel();
+        if (mounted) {
+          setState(() {
+            _hasReceivedFirstResponse = true; 
+            _isWaitingForBackend = false; 
+          });
+        }
+      }
+
       if (mounted) {
-        setState(() => _prediction = results);
+        if (results.isNotEmpty) {
+          setState(() => _prediction = results);
+        }
+        _clearDisplayTimer?.cancel();
+        _clearDisplayTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) {
+            setState(() {
+              _prediction = [];
+            });
+          }
+        });
       }
     } catch (e) {
       log("Processing error: $e");
+      // Safety net: Also cancel the timer if the network crashes
+      _coldStartTimer?.cancel();
+      if (mounted) setState(() => _isWaitingForBackend = false);
     }
   }
 
@@ -130,6 +176,8 @@ class _CameraRecognitionState extends State<CameraRecognition>
       format: ui.ImageByteFormat.png,
     );
 
+    image.dispose();
+
     return byteData?.buffer.asUint8List();
   }
 
@@ -139,7 +187,9 @@ class _CameraRecognitionState extends State<CameraRecognition>
   ) async {
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('https://kampar-backend-830798580425.asia-southeast1.run.app/predict'),
+      Uri.parse(
+        'https://kampar-backend-830798580425.asia-southeast1.run.app/predict',
+      ),
     );
 
     request.headers['User-Agent'] = 'KampAR-Client/1.0';
@@ -177,7 +227,7 @@ class _CameraRecognitionState extends State<CameraRecognition>
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              openAppSettings(); 
+              openAppSettings();
             },
             child: const Text("Open Settings"),
           ),
@@ -199,9 +249,57 @@ class _CameraRecognitionState extends State<CameraRecognition>
       backgroundColor: Colors.black,
       body: _hasPermissions
           ? (_isARVisible
-                ? ARDisplay(
-                    predictions: _prediction,
-                    onARViewCreated: _onARViewCreated,
+                ? Stack(
+                    children: [
+                      // 1. The main AR camera view
+                      ARDisplay(
+                        predictions: _prediction,
+                        onARViewCreated: _onARViewCreated,
+                      ),
+
+                      // 2. The Loading Text Overlay
+                      if (_isWaitingForBackend)
+                        Positioned(
+                          bottom:
+                              50, 
+                          left: 20,
+                          right: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 20,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 15),
+                                Expanded(
+                                  child: Text(
+                                    _loadingText,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   )
                 : const Center(child: CircularProgressIndicator()))
           : const Center(child: CircularProgressIndicator()),

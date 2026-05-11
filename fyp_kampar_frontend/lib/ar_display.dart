@@ -61,18 +61,15 @@ class _ARDisplayState extends State<ARDisplay> {
           final String label = det['label']?.toString() ?? 'Unknown';
           final String targetUrl = det['url']?.toString() ?? '';
 
-          // 1. SAFELY PARSE NUMBERS (Prevents silent UI crashes)
           double rawTop = (box[1] as num).toDouble() * constraints.maxHeight;
           double left = (box[0] as num).toDouble() * constraints.maxWidth;
 
-          // 2. STOP HIDING OBJECTS AT THE TOP (Removed the 100.0 limit)
           double safeTop = rawTop - 40;
-          if (safeTop < 10.0) safeTop = 10.0; // Just keep it 10px from the absolute top edge
+          if (safeTop < 10.0) safeTop = 10.0; 
 
           return Positioned(
             left: left,
             top: safeTop,
-            // 3. REMOVED the 'width: width' parameter entirely so the text can size itself!
             child: GestureDetector(
               onTap: () async {
                 if (targetUrl.isNotEmpty) {
@@ -100,7 +97,7 @@ class _ARDisplayState extends State<ARDisplay> {
                       label,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 14, // Bumped size slightly
+                        fontSize: 14, 
                         fontWeight: FontWeight.bold,
                         fontFamily: "Montserrat",                    
                       ),
@@ -110,7 +107,7 @@ class _ARDisplayState extends State<ARDisplay> {
                   const Icon(
                     Icons.arrow_drop_down,
                     color: Color.fromARGB(255, 12, 56, 113),
-                    size: 28, // Made pointer a bit more visible
+                    size: 28, 
                   ),
                 ],
               ),

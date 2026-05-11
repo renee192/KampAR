@@ -25,6 +25,7 @@ else:
 # Initialize Firebase
 firebase_admin.initialize_app(cred, {
     'storageBucket': 'kampar-tour-guide-app.firebasestorage.app'
+    
 })
 
 db = firestore.client()
@@ -34,6 +35,10 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Using device:", device)
 
 app = FastAPI()
+
+@app.get("/status")
+async def wake_up():
+    return {"status": "Server is awake and ready!"}
 
 # Allow requests from Flutter app
 app.add_middleware(
@@ -209,7 +214,7 @@ async def predict(
     best_detections = {}
 
     if place == "utar_grand_hall":
-        MATCH_THRESHOLD = 0.55
+        MATCH_THRESHOLD = 0.58
 
     elif place == "kampar_seng_fatt_temple":
         MATCH_THRESHOLD = 0.6

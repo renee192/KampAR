@@ -49,5 +49,10 @@ KampAR relies on a two-step pre-trained model pipeline to achieve high-accuracy,
   * [FastSAM](https://docs.ultralytics.com/models/fast-sam) (Fast Segment Anything)
   * [OpenAI CLIP (vit-base-patch32)](https://huggingface.co/openai/clip-vit-base-patch32) (Contrastive Language-Image Pretraining)
 * **Backend / Cloud:** Python, FastAPI, Firebase, Google Cloud
+
+## ⚠️ Limitations
+1. **Model Accuracy:** The models used (FastSAM and CLIP) are pre-trained and have not undergone custom fine-tuning or training. Hence, the recognition accuracy may not always be 100%.
+2. **Screen Overlay vs. True AR:** The current "AR" implementation is a 2D digital overlay placed over the camera feed, rather than true 3D spatial Augmented Reality.
+
 ---
 🎥 **[Watch the demo here](https://drive.google.com/file/d/18Us5Hxz_G2mY96w0HGWW--QeMDsiBD4r/view?usp=drive_link)**

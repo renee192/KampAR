@@ -32,3 +32,5 @@ KampAR relies on a two-step pre-trained model pipeline to achieve high-accuracy,
   * [FastSAM](https://docs.ultralytics.com/models/fast-sam) (Fast Segment Anything)
   * [OpenAI CLIP (vit-base-patch32)](https://huggingface.co/openai/clip-vit-base-patch32) (Contrastive Language-Image Pretraining)
 * **Backend / Cloud:** Python, FastAPI, Firebase, Google Cloud
+
+🎥 **[Watch the demo here](https://drive.google.com/file/d/18Us5Hxz_G2mY96w0HGWW--QeMDsiBD4r/view?usp=drive_link)**
